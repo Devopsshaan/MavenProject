@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DevOps Demo - Real-time Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-tertiary: #334155;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent-blue: #3b82f6;
+            --accent-green: #22c55e;
+            --accent-yellow: #eab308;
+            --accent-red: #ef4444;
+            --accent-purple: #a855f7;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--bg-tertiary);
+        }
+
+        .header h1 {
+            font-size: 2rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        .status-badge.connected {
+            background: rgba(34, 197, 94, 0.2);
+            color: var(--accent-green);
+        }
+
+        .status-badge.disconnected {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--accent-red);
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .connected .status-dot { background: var(--accent-green); }
+        .disconnected .status-dot { background: var(--accent-red); }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .card {
+            background: var(--bg-secondary);
+            border-radius: 16px;
+            padding: 24px;
+            border: 1px solid var(--bg-tertiary);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .card-title {
+            font-size: 1rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .card-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+        }
+
+        .card-icon.cpu { background: rgba(59, 130, 246, 0.2); }
+        .card-icon.memory { background: rgba(168, 85, 247, 0.2); }
+        .card-icon.threads { background: rgba(34, 197, 94, 0.2); }
+        .card-icon.uptime { background: rgba(234, 179, 8, 0.2); }
+
+        .metric-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .metric-label {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .progress-bar {
+            height: 8px;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 12px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+
+        .progress-fill.cpu { background: linear-gradient(90deg, var(--accent-blue), #60a5fa); }
+        .progress-fill.memory { background: linear-gradient(90deg, var(--accent-purple), #c084fc); }
+        .progress-fill.heap { background: linear-gradient(90deg, var(--accent-green), #4ade80); }
+
+        .chart-container {
+            grid-column: span 2;
+            height: 300px;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
+        }
+
+        .info-item {
+            padding: 16px;
+            background: var(--bg-tertiary);
+            border-radius: 10px;
+        }
+
+        .info-label {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            margin-bottom: 4px;
+        }
+
+        .info-value {
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .tasks-section {
+            grid-column: span 2;
+        }
+
+        .task-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .task-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px;
+            background: var(--bg-tertiary);
+            border-radius: 10px;
+            margin-bottom: 10px;
+        }
+
+        .task-info {
+            flex: 1;
+        }
+
+        .task-title {
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .task-meta {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+
+        .task-status {
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-pending { background: rgba(234, 179, 8, 0.2); color: var(--accent-yellow); }
+        .status-in_progress { background: rgba(59, 130, 246, 0.2); color: var(--accent-blue); }
+        .status-completed { background: rgba(34, 197, 94, 0.2); color: var(--accent-green); }
+        .status-cancelled { background: rgba(239, 68, 68, 0.2); color: var(--accent-red); }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: var(--accent-blue);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2563eb;
+            transform: translateY(-1px);
+        }
+
+        .actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .log-container {
+            grid-column: span 2;
+            max-height: 200px;
+            overflow-y: auto;
+            background: #000;
+            border-radius: 10px;
+            padding: 16px;
+            font-family: 'Fira Code', 'Consolas', monospace;
+            font-size: 0.85rem;
+        }
+
+        .log-entry {
+            margin-bottom: 4px;
+            color: var(--accent-green);
+        }
+
+        .log-entry.error { color: var(--accent-red); }
+        .log-entry.warn { color: var(--accent-yellow); }
+
+        @media (max-width: 768px) {
+            .chart-container, .tasks-section, .log-container {
+                grid-column: span 1;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>
+            <span>🚀</span>
+            DevOps Demo Dashboard
+        </h1>
+        <div id="connectionStatus" class="status-badge disconnected">
+            <div class="status-dot"></div>
+            <span>Disconnected</span>
+        </div>
+    </div>
+
+    <div class="dashboard">
+        <!-- CPU Usage -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">CPU Usage</span>
+                <div class="card-icon cpu">💻</div>
+            </div>
+            <div class="metric-value" id="cpuValue">0%</div>
+            <div class="metric-label">Current Load</div>
+            <div class="progress-bar">
+                <div class="progress-fill cpu" id="cpuBar" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <!-- Memory Usage -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">Memory Usage</span>
+                <div class="card-icon memory">🧠</div>
+            </div>
+            <div class="metric-value" id="memoryValue">0%</div>
+            <div class="metric-label"><span id="usedMemory">0</span> MB / <span id="totalMemory">0</span> MB</div>
+            <div class="progress-bar">
+                <div class="progress-fill memory" id="memoryBar" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <!-- Active Threads -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">Active Threads</span>
+                <div class="card-icon threads">🧵</div>
+            </div>
+            <div class="metric-value" id="threadsValue">0</div>
+            <div class="metric-label">Currently Running</div>
+        </div>
+
+        <!-- Uptime -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">Uptime</span>
+                <div class="card-icon uptime">⏱️</div>
+            </div>
+            <div class="metric-value" id="uptimeValue">0s</div>
+            <div class="metric-label">Since Last Restart</div>
+        </div>
+
+        <!-- Real-time Chart -->
+        <div class="card chart-container">
+            <div class="card-header">
+                <span class="card-title">Real-time Metrics</span>
+            </div>
+            <canvas id="metricsChart"></canvas>
+        </div>
+
+        <!-- System Info -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">System Information</span>
+            </div>
+            <div class="info-grid">
+                <div class="info-item">
+                    <div class="info-label">Hostname</div>
+                    <div class="info-value" id="hostname">-</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Java Version</div>
+                    <div class="info-value" id="javaVersion">-</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Processors</div>
+                    <div class="info-value" id="processors">-</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Heap Max</div>
+                    <div class="info-value" id="heapMax">-</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Heap Usage -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">JVM Heap</span>
+            </div>
+            <div class="metric-value" id="heapValue">0%</div>
+            <div class="metric-label"><span id="heapUsed">0</span> MB / <span id="heapMaxVal">0</span> MB</div>
+            <div class="progress-bar">
+                <div class="progress-fill heap" id="heapBar" style="width: 0%"></div>
+            </div>
+            <div class="actions">
+                <button class="btn btn-primary" onclick="simulateLoad()">Simulate Load</button>
+                <button class="btn btn-primary" onclick="simulateMemory()">Simulate Memory</button>
+            </div>
+        </div>
+
+        <!-- Tasks -->
+        <div class="card tasks-section">
+            <div class="card-header">
+                <span class="card-title">Recent Tasks</span>
+                <button class="btn btn-primary" onclick="createTask()">+ Add Task</button>
+            </div>
+            <div class="task-list" id="taskList">
+                <div class="task-item">
+                    <div class="task-info">
+                        <div class="task-title">Loading tasks...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Event Log -->
+        <div class="card log-container" id="eventLog">
+            <div class="log-entry">Initializing dashboard...</div>
+        </div>
+    </div>
+
+    <script>
+        let stompClient = null;
+        let metricsChart = null;
+        const maxDataPoints = 30;
+        const chartData = {
+            labels: [],
+            cpu: [],
+            memory: [],
+            heap: []
+        };
+
+        // Initialize Chart
+        function initChart() {
+            const ctx = document.getElementById('metricsChart').getContext('2d');
+            metricsChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: chartData.labels,
+                    datasets: [
+                        {
+                            label: 'CPU %',
+                            data: chartData.cpu,
+                            borderColor: '#3b82f6',
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            fill: true,
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Memory %',
+                            data: chartData.memory,
+                            borderColor: '#a855f7',
+                            backgroundColor: 'rgba(168, 85, 247, 0.1)',
+                            fill: true,
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Heap %',
+                            data: chartData.heap,
+                            borderColor: '#22c55e',
+                            backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                            fill: true,
+                            tension: 0.4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: { color: '#94a3b8' }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: '#334155' },
+                            ticks: { color: '#94a3b8' }
+                        },
+                        y: {
+                            min: 0,
+                            max: 100,
+                            grid: { color: '#334155' },
+                            ticks: { color: '#94a3b8' }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Connect to WebSocket
+        function connect() {
+            const socket = new SockJS('/ws');
+            stompClient = Stomp.over(socket);
+            stompClient.debug = null; // Disable debug logs
+
+            stompClient.connect({}, function(frame) {
+                log('Connected to WebSocket');
+                updateConnectionStatus(true);
+
+                // Subscribe to metrics
+                stompClient.subscribe('/topic/metrics', function(message) {
+                    const metrics = JSON.parse(message.body);
+                    updateMetrics(metrics);
+                });
+
+                // Subscribe to task updates
+                stompClient.subscribe('/topic/tasks', function(message) {
+                    const update = JSON.parse(message.body);
+                    log(`Task ${update.action}: ${update.task.title}`);
+                    loadTasks();
+                });
+
+            }, function(error) {
+                log('WebSocket error: ' + error, 'error');
+                updateConnectionStatus(false);
+                setTimeout(connect, 5000);
+            });
+        }
+
+        function updateConnectionStatus(connected) {
+            const el = document.getElementById('connectionStatus');
+            el.className = 'status-badge ' + (connected ? 'connected' : 'disconnected');
+            el.querySelector('span').textContent = connected ? 'Connected' : 'Disconnected';
+        }
+
+        function updateMetrics(metrics) {
+            // Update values
+            document.getElementById('cpuValue').textContent = metrics.cpuUsage.toFixed(1) + '%';
+            document.getElementById('cpuBar').style.width = metrics.cpuUsage + '%';
+
+            document.getElementById('memoryValue').textContent = metrics.memoryUsagePercent.toFixed(1) + '%';
+            document.getElementById('memoryBar').style.width = metrics.memoryUsagePercent + '%';
+            document.getElementById('usedMemory').textContent = metrics.usedMemory;
+            document.getElementById('totalMemory').textContent = metrics.totalMemory;
+
+            document.getElementById('threadsValue').textContent = metrics.activeThreads;
+            document.getElementById('uptimeValue').textContent = formatUptime(metrics.uptimeSeconds);
+
+            document.getElementById('heapValue').textContent = metrics.heapUsagePercent.toFixed(1) + '%';
+            document.getElementById('heapBar').style.width = metrics.heapUsagePercent + '%';
+            document.getElementById('heapUsed').textContent = metrics.heapUsed;
+            document.getElementById('heapMaxVal').textContent = metrics.heapMax;
+
+            document.getElementById('hostname').textContent = metrics.hostname;
+            document.getElementById('javaVersion').textContent = metrics.javaVersion;
+            document.getElementById('processors').textContent = metrics.availableProcessors;
+            document.getElementById('heapMax').textContent = metrics.heapMax + ' MB';
+
+            // Update chart
+            const now = new Date().toLocaleTimeString();
+            chartData.labels.push(now);
+            chartData.cpu.push(metrics.cpuUsage);
+            chartData.memory.push(metrics.memoryUsagePercent);
+            chartData.heap.push(metrics.heapUsagePercent);
+
+            if (chartData.labels.length > maxDataPoints) {
+                chartData.labels.shift();
+                chartData.cpu.shift();
+                chartData.memory.shift();
+                chartData.heap.shift();
+            }
+
+            metricsChart.update('none');
+        }
+
+        function formatUptime(seconds) {
+            const days = Math.floor(seconds / 86400);
+            const hours = Math.floor((seconds % 86400) / 3600);
+            const mins = Math.floor((seconds % 3600) / 60);
+            const secs = seconds % 60;
+
+            if (days > 0) return `${days}d ${hours}h`;
+            if (hours > 0) return `${hours}h ${mins}m`;
+            if (mins > 0) return `${mins}m ${secs}s`;
+            return `${secs}s`;
+        }
+
+        function log(message, type = 'info') {
+            const logEl = document.getElementById('eventLog');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry ' + type;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logEl.appendChild(entry);
+            logEl.scrollTop = logEl.scrollHeight;
+
+            // Keep only last 50 entries
+            while (logEl.children.length > 50) {
+                logEl.removeChild(logEl.firstChild);
+            }
+        }
+
+        async function loadTasks() {
+            try {
+                const response = await fetch('/api/v1/tasks');
+                const tasks = await response.json();
+                renderTasks(tasks);
+            } catch (error) {
+                log('Error loading tasks: ' + error, 'error');
+            }
+        }
+
+        function renderTasks(tasks) {
+            const container = document.getElementById('taskList');
+            if (tasks.length === 0) {
+                container.innerHTML = '<div class="task-item"><div class="task-info"><div class="task-title">No tasks yet</div></div></div>';
+                return;
+            }
+
+            container.innerHTML = tasks.slice(0, 10).map(task => `
+                <div class="task-item">
+                    <div class="task-info">
+                        <div class="task-title">${task.title}</div>
+                        <div class="task-meta">Priority: ${task.priority} | Created: ${new Date(task.createdAt).toLocaleString()}</div>
+                    </div>
+                    <span class="task-status status-${task.status.toLowerCase()}">${task.status}</span>
+                </div>
+            `).join('');
+        }
+
+        async function createTask() {
+            const title = prompt('Enter task title:');
+            if (!title) return;
+
+            try {
+                const response = await fetch('/api/v1/tasks', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        title: title,
+                        description: 'Created from dashboard',
+                        priority: 'MEDIUM'
+                    })
+                });
+                const task = await response.json();
+                log(`Created task: ${task.title}`);
+                loadTasks();
+            } catch (error) {
+                log('Error creating task: ' + error, 'error');
+            }
+        }
+
+        async function simulateLoad() {
+            log('Starting CPU load simulation...');
+            try {
+                const response = await fetch('/api/v1/simulate/load');
+                const result = await response.json();
+                log(`Load simulation completed in ${result.durationMs}ms`);
+            } catch (error) {
+                log('Error: ' + error, 'error');
+            }
+        }
+
+        async function simulateMemory() {
+            log('Starting memory simulation...');
+            try {
+                const response = await fetch('/api/v1/simulate/memory');
+                const result = await response.json();
+                log(`Memory simulation completed. Peak: ${result.peakMemoryUsedMB}MB`);
+            } catch (error) {
+                log('Error: ' + error, 'error');
+            }
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            initChart();
+            connect();
+            loadTasks();
+        });
+    </script>
+</body>
+</html>
