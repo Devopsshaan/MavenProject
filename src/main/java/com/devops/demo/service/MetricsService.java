@@ -1,7 +1,8 @@
 package com.devops.demo.service;
 
 import com.devops.demo.model.SystemMetrics;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.lang.management.ManagementFactory;
@@ -11,8 +12,9 @@ import java.net.InetAddress;
 import java.time.Instant;
 
 @Service
-@Slf4j
 public class MetricsService {
+
+    private static final Logger log = LoggerFactory.getLogger(MetricsService.class);
 
     private final MemoryMXBean memoryMXBean;
     private final RuntimeMXBean runtimeMXBean;

@@ -4,7 +4,6 @@ import com.devops.demo.model.SystemMetrics;
 import com.devops.demo.service.MetricsService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,7 +16,6 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1")
-@RequiredArgsConstructor
 @Tag(name = "System Information", description = "APIs for system health and information")
 public class SystemController {
 
@@ -31,6 +29,10 @@ public class SystemController {
 
     @Value("${app.environment:development}")
     private String environment;
+
+    public SystemController(MetricsService metricsService) {
+        this.metricsService = metricsService;
+    }
 
     @GetMapping("/info")
     @Operation(summary = "Get application info", description = "Returns application metadata")

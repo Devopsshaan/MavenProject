@@ -2,8 +2,8 @@ package com.devops.demo.websocket;
 
 import com.devops.demo.model.Task;
 import com.devops.demo.service.TaskService;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.SendTo;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -13,12 +13,17 @@ import java.time.Instant;
 import java.util.Map;
 
 @Controller
-@RequiredArgsConstructor
-@Slf4j
 public class TaskWebSocketController {
+
+    private static final Logger log = LoggerFactory.getLogger(TaskWebSocketController.class);
 
     private final TaskService taskService;
     private final SimpMessagingTemplate messagingTemplate;
+
+    public TaskWebSocketController(TaskService taskService, SimpMessagingTemplate messagingTemplate) {
+        this.taskService = taskService;
+        this.messagingTemplate = messagingTemplate;
+    }
 
     @MessageMapping("/task/create")
     @SendTo("/topic/tasks")
