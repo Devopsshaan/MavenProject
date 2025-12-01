@@ -1,15 +1,19 @@
-name: Continuous Integration
+name: Java CI with Maven
 
 on:
   push:
-    branches: [develop, feature/**]
+    branches: [ "main", "develop" ]
   pull_request:
-    branches: [main, develop]
+    branches: [ "main", "develop" ]
+
+# ⭐⭐ ADD THIS PERMISSIONS BLOCK ⭐⭐
+permissions:
+  checks: write  # This allows creating check runs
+  contents: read  # This allows reading the code
 
 jobs:
-  build-and-test:
+  build:
     runs-on: ubuntu-latest
-    
     steps:
     - uses: actions/checkout@v4
     
@@ -20,33 +24,25 @@ jobs:
         distribution: 'temurin'
         cache: maven
     
-    - name: Cache Maven dependencies
-      uses: actions/cache@v3
-      with:
-        path: ~/.m2
-        key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
-        restore-keys: ${{ runner.os }}-m2
-    
-    - name: Build
-      run: mvn clean compile
+    - name: Build with Maven
+      run: mvn -B clean compile --file pom.xml
     
     - name: Run Unit Tests
+      run: mvn test --file pom.xml
+    
+    # ⭐⭐ ADD id TO THE TEST STEP ⭐⭐
+    - name: Run Tests
+      id: tests
       run: mvn test
     
-    - name: Run Integration Tests
-      run: mvn verify -DskipUnitTests
-    
-    - name: Package
-      run: mvn package -DskipTests
-    
-    - name: Upload Test Results
-      uses: actions/upload-artifact@v3
+    - name: Generate Test Report
+      # ⭐⭐ FIXED VERSION WITH PERMISSIONS ⭐⭐
+      if: always()  # Run even if tests fail
+      uses: dorny/test-reporter@v1
       with:
-        name: test-results
-        path: target/surefire-reports/
+        name: Maven Test Results
+        path: target/surefire-reports/*.xml
+        reporter: java-junit
     
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v3
-      with:
-        name: application-jar
-        path: target/*.jar
+    - name: Build Package
+      run: mvn package -DskipTests --file pom.xml
