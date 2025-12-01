@@ -1,26 +1,17 @@
-name: Java CI Pipeline
-
-# ⚠️ ADD THIS PERMISSIONS BLOCK AT THE TOP ⚠️
-permissions:
-  contents: read
-  checks: write    # This allows creating test reports
-  statuses: write  # This allows updating commit status
+name: Continuous Integration
 
 on:
   push:
-    branches: [ "main", "develop", "feature/*" ]
+    branches: [develop, feature/**]
   pull_request:
-    branches: [ "main", "develop" ]
+    branches: [main, develop]
 
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
     
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
+    - uses: actions/checkout@v4
     
     - name: Set up JDK 17
       uses: actions/setup-java@v3
@@ -29,20 +20,33 @@ jobs:
         distribution: 'temurin'
         cache: maven
     
-    - name: Build with Maven
-      run: mvn clean compile
-      
-    - name: Run tests
-      run: mvn test
-      
-    # ✅ FIXED VERSION - Add if condition
-    - name: Generate Test Report
-      if: success() || failure()  # Run even if tests fail
-      uses: dorny/test-reporter@v1
+    - name: Cache Maven dependencies
+      uses: actions/cache@v3
       with:
-        name: Maven Test Results
-        path: target/surefire-reports/*.xml
-        reporter: java-junit
+        path: ~/.m2
+        key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+        restore-keys: ${{ runner.os }}-m2
     
-    - name: Package application
+    - name: Build
+      run: mvn clean compile
+    
+    - name: Run Unit Tests
+      run: mvn test
+    
+    - name: Run Integration Tests
+      run: mvn verify -DskipUnitTests
+    
+    - name: Package
       run: mvn package -DskipTests
+    
+    - name: Upload Test Results
+      uses: actions/upload-artifact@v3
+      with:
+        name: test-results
+        path: target/surefire-reports/
+    
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: application-jar
+        path: target/*.jar

@@ -13,23 +13,9 @@
 
     <groupId>com.devops</groupId>
     <artifactId>devops-demo</artifactId>
-    <version>1.0.0-SNAPSHOT</version> 
+    <version>1.0.0</version>
     <name>DevOps Demo Application</name>
     <description>Production-ready Spring Boot application for learning DevOps</description>
-
-    <!-- =============== ADD THIS SECTION =============== -->
-    <!-- Distribution Management for Nexus Deployment -->
-    <distributionManagement>
-        <snapshotRepository>
-            <id>devops-nexus-snapshots</id>
-            <url>http://localhost:8081/repository/maven-snapshots/</url>
-        </snapshotRepository>
-        <repository>
-            <id>devops-nexus-releases</id>
-            <url>http://localhost:8081/repository/maven-releases/</url>
-        </repository>
-    </distributionManagement>
-    <!-- ============================================== -->
 
     <properties>
         <java.version>17</java.version>
